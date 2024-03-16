@@ -1,4 +1,7 @@
-const { db } = require('@vercel/postgres');
+
+// const { db } = require('@vercel/postgres'); // I tried to comment this
+require('dotenv').config();
+const { Client } = require('pg');
 const {
   invoices,
   customers,
@@ -161,7 +164,41 @@ async function seedRevenue(client) {
 }
 
 async function main() {
-  const client = await db.connect();
+ 
+const client = new Client({
+  user: 'postgres',
+  host: '127.0.0.1',
+  database: 'dev',
+  password: 'qwertyuiop',
+  port: 5432,
+})
+
+  await client.connect();
+
+  const values = (values, { columns = Object.keys(values) } = {}) => {
+    if (!Array.isArray(values)) {
+      values = columns.map(column => values[column]);
+    }
+    return valuePosition => ({
+      text: Array.apply(null, { length: values.length }).map(() => '$' + (++valuePosition)).join(', '),
+      values
+    })
+  };
+  client.sql = (textFragments, ...valueFragments) => {
+    const query = {
+      text: textFragments[0],
+      values: []
+    };
+    valueFragments.forEach((valueFragment, i) => {
+      if (typeof valueFragment !== 'function') {
+        valueFragment = values([valueFragment]);
+      }
+      valueFragment = valueFragment(query.values.length);
+      query.text += valueFragment.text + textFragments[i + 1];
+      query.values = query.values.concat(valueFragment.values);
+    });
+    return client.query(query.text, query.values);
+  };
 
   await seedUsers(client);
   await seedCustomers(client);

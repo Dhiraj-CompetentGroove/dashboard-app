@@ -1,4 +1,18 @@
-import { sql } from '@vercel/postgres';
+//import { sql } from '@vercel/postgres';
+import { unstable_noStore as noStore } from 'next/cache';
+const { Pool } = require('pg');
+
+//const { Pool } = require('pg-promise');
+
+const pool = new Pool({
+  user: 'postgres',
+  host: '127.0.0.1',
+  database: 'dev',
+  password: 'qwertyuiop',
+  port: 5432,
+});
+
+
 import {
   CustomerField,
   CustomersTableType,
@@ -13,17 +27,21 @@ import { formatCurrency } from './utils';
 export async function fetchRevenue() {
   // Add noStore() here to prevent the response from being cached.
   // This is equivalent to in fetch(..., {cache: 'no-store'}).
+  noStore();
 
   try {
     // Artificially delay a response for demo purposes.
     // Don't do this in production :)
 
-    // console.log('Fetching revenue data...');
-    // await new Promise((resolve) => setTimeout(resolve, 3000));
+    console.log('Fetching revenue data...');
+    await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    const data = await sql<Revenue>`SELECT * FROM revenue`;
+    //const data = await sql<Revenue>`SELECT * FROM revenue`;
+    const queryText = 'SELECT * FROM revenue';
+    const data = await pool.query(queryText);
+    //console.log(data.rows);
 
-    // console.log('Data fetch completed after 3 seconds.');
+    console.log('Data fetch completed after 3 seconds.');
 
     return data.rows;
   } catch (error) {
@@ -33,14 +51,17 @@ export async function fetchRevenue() {
 }
 
 export async function fetchLatestInvoices() {
+  noStore();
   try {
-    const data = await sql<LatestInvoiceRaw>`
-      SELECT invoices.amount, customers.name, customers.image_url, customers.email, invoices.id
-      FROM invoices
-      JOIN customers ON invoices.customer_id = customers.id
-      ORDER BY invoices.date DESC
-      LIMIT 5`;
-
+    // const data = await sql<LatestInvoiceRaw>`
+    //   SELECT invoices.amount, customers.name, customers.image_url, customers.email, invoices.id
+    //   FROM invoices
+    //   JOIN customers ON invoices.customer_id = customers.id
+    //   ORDER BY invoices.date DESC
+    //   LIMIT 5`;
+    
+    const queryText =" SELECT invoices.amount, customers.name, customers.image_url, customers.email, invoices.id FROM invoices JOIN customers ON invoices.customer_id = customers.id ORDER BY invoices.date DESC LIMIT 5";
+    const data = await pool.query(queryText);
     const latestInvoices = data.rows.map((invoice) => ({
       ...invoice,
       amount: formatCurrency(invoice.amount),
@@ -53,28 +74,57 @@ export async function fetchLatestInvoices() {
 }
 
 export async function fetchCardData() {
+  noStore();
   try {
     // You can probably combine these into a single SQL query
     // However, we are intentionally splitting them to demonstrate
     // how to initialize multiple queries in parallel with JS.
-    const invoiceCountPromise = sql`SELECT COUNT(*) FROM invoices`;
-    const customerCountPromise = sql`SELECT COUNT(*) FROM customers`;
-    const invoiceStatusPromise = sql`SELECT
-         SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) AS "paid",
-         SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS "pending"
-         FROM invoices`;
+    // const invoiceCountPromise = sql`SELECT COUNT(*) FROM invoices`;
+    // const customerCountPromise = sql`SELECT COUNT(*) FROM customers`;
+    // const invoiceStatusPromise = sql`SELECT
+    //      SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) AS "paid",
+    //      SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS "pending"
+    //      FROM invoices`;
 
-    const data = await Promise.all([
-      invoiceCountPromise,
-      customerCountPromise,
-      invoiceStatusPromise,
-    ]);
+    const invoiceCountSql = "SELECT COUNT(*) FROM invoices";
+    const customerCountSql = "SELECT COUNT(*) FROM customers";
+    const invoiceStatusSql = "SELECT SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) AS paid, SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS pending FROM invoices";
 
-    const numberOfInvoices = Number(data[0].rows[0].count ?? '0');
-    const numberOfCustomers = Number(data[1].rows[0].count ?? '0');
-    const totalPaidInvoices = formatCurrency(data[2].rows[0].paid ?? '0');
-    const totalPendingInvoices = formatCurrency(data[2].rows[0].pending ?? '0');
+    // const data = await Promise.all([
+    //   invoiceCountPromise,
+    //   customerCountPromise,
+    //   invoiceStatusPromise,
+    // ]);
 
+    const invoiceCount = await pool.query(invoiceCountSql);
+    //console.log(invoiceCount);
+    const customerCount = await pool.query(customerCountSql);
+    //console.log(customerCount);
+    const invoiceStatus = await pool.query(invoiceStatusSql);
+    //console.log(invoiceStatus);
+    
+    // const data = await Promise.all([
+    //   invoiceCountSql,
+    //   customerCountSql,
+    //   invoiceStatusSql,
+    // ]);
+
+    // console.log(data)
+
+
+
+    const numberOfInvoices = Number(invoiceCount.rows[0].count ?? '0');
+    const numberOfCustomers = Number(customerCount.rows[0].count ?? '0');
+    const totalPaidInvoices = formatCurrency(invoiceStatus.rows[0].paid ?? '0');
+    const totalPendingInvoices = formatCurrency(invoiceStatus.rows[0].pending ?? '0');
+
+    // const numberOfInvoices = Number(data[0].rows[0].count ?? '0');
+    // const numberOfCustomers = Number(data[1].rows[0].count ?? '0');
+    // const totalPaidInvoices = formatCurrency(data[2].rows[0].paid ?? '0');
+    // const totalPendingInvoices = formatCurrency(data[2].rows[0].pending ?? '0');
+
+    //console.log(numberOfInvoices);
+    //console.log(numberOfCustomers);
     return {
       numberOfCustomers,
       numberOfInvoices,
@@ -124,6 +174,7 @@ export async function fetchFilteredInvoices(
 }
 
 export async function fetchInvoicesPages(query: string) {
+  noStore();
   try {
     const count = await sql`SELECT COUNT(*)
     FROM invoices
@@ -145,6 +196,7 @@ export async function fetchInvoicesPages(query: string) {
 }
 
 export async function fetchInvoiceById(id: string) {
+  noStore();
   try {
     const data = await sql<InvoiceForm>`
       SELECT
@@ -188,6 +240,7 @@ export async function fetchCustomers() {
 }
 
 export async function fetchFilteredCustomers(query: string) {
+  noStore();
   try {
     const data = await sql<CustomersTableType>`
 		SELECT
